@@ -441,11 +441,8 @@ packages = {
         r'\b(kind\s*=\s*branch\s*;)': r'minimumVersion = 1.9.0;',
         r'\b(minimumVersion\s*=\s*[0-9.]+\s*;)': r'minimumVersion = 1.9.0;',
     },
-    "SwiftCBOR": {
-        r'\b(branch\s*=\s*master\s*;)': r'kind = upToNextMajorVersion;',
-        r'\b(kind\s*=\s*branch\s*;)': r'minimumVersion = 0.4.0;',
-        r'\b(minimumVersion\s*=\s*[0-9.]+\s*;)': r'minimumVersion = 0.4.0;',
-    },
+    # SwiftCBOR branch tracking is left as-is (master branch with kind=branch)
+    # because version pinning triggers a cycle detection bug in some Xcode versions
     # Pin to exact versions to prevent SPM resolving newer releases
     # with incompatible transitive dependencies
     "Runestone": {
