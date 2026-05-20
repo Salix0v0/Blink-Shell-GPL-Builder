@@ -1214,7 +1214,6 @@ EXPORT_EOF
             -target "Blink" \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            -derivedDataPath "${BUILD_DIR}/DerivedData" \
             CONFIGURATION_BUILD_DIR="${BUILD_DIR}/Products" \
             -skipPackagePluginValidation \
             -skipMacroValidation \
