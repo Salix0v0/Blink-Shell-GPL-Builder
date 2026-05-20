@@ -418,6 +418,12 @@ fix_package_dependencies() {
     if grep -q 'XCRemoteSwiftPackageReference "SwiftCBOR"' "$PBXPROJ" 2>/dev/null; then
         NEEDS_FIX=true
     fi
+    if grep -q 'XCRemoteSwiftPackageReference "Runestone"' "$PBXPROJ" 2>/dev/null; then
+        NEEDS_FIX=true
+    fi
+    if grep -q 'XCRemoteSwiftPackageReference "treesitterlanguages"' "$PBXPROJ" 2>/dev/null; then
+        NEEDS_FIX=true
+    fi
 
     if [ "$NEEDS_FIX" = true ]; then
         python3 - "$PBXPROJ" << 'PYEOF'
@@ -439,6 +445,16 @@ packages = {
         r'\b(branch\s*=\s*master\s*;)': r'kind = upToNextMajorVersion;',
         r'\b(kind\s*=\s*branch\s*;)': r'minimumVersion = 0.4.0;',
         r'\b(minimumVersion\s*=\s*[0-9.]+\s*;)': r'minimumVersion = 0.4.0;',
+    },
+    # Pin to exact versions to prevent SPM resolving newer releases
+    # with incompatible transitive dependencies
+    "Runestone": {
+        r'\bkind\s*=\s*upToNextMajorVersion\s*;': r'kind = exactVersion;',
+        r'\b(minimumVersion\s*=\s*[0-9.]+\s*;)': r'version = 0.3.0;',
+    },
+    "treesitterlanguages": {
+        r'\bkind\s*=\s*upToNextMajorVersion\s*;': r'kind = exactVersion;',
+        r'\b(minimumVersion\s*=\s*[0-9.]+\s*;)': r'version = 0.1.7;',
     },
 }
 
@@ -482,7 +498,9 @@ PYEOF
 
     # Clear SPM cache to avoid stale manifests
     rm -rf ~/Library/Caches/org.swift.swiftpm/manifests 2>/dev/null || true
+    rm -rf ~/Library/Caches/org.swift.swiftpm/repositories 2>/dev/null || true
     rm -rf "${SOURCE_DIR}/Blink.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved" 2>/dev/null || true
+    rm -f "${SOURCE_DIR}/xcfs/Package.resolved" 2>/dev/null || true
 }
 
 # Function to fix hardcoded TEAM_ID in project file
