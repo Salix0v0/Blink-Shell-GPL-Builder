@@ -1204,13 +1204,15 @@ EXPORT_EOF
     else
         # Generic iOS build (unsigned .ipa for sideloading)
         # Use sideload-friendly entitlements (no iCloud, Push, etc.)
-        # Build only the main Blink target (not extensions which have
-        # compilation errors with newer Swift and are removed from IPA anyway)
+        # Use -workspace to resolve proper dependency ordering and avoid
+        # cycle detection that occurs with -target builds
+        local WORKSPACE="${SOURCE_DIR}/Blink.xcodeproj/project.xcworkspace"
         run_xcodebuild xcodebuild \
-            -project "$PROJECT" \
-            -target "Blink" \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
             -configuration Release \
             -destination 'generic/platform=iOS' \
+            -derivedDataPath "${BUILD_DIR}/DerivedData" \
             CONFIGURATION_BUILD_DIR="${BUILD_DIR}/Products" \
             -skipPackagePluginValidation \
             -skipMacroValidation \
