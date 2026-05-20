@@ -409,24 +409,75 @@ verify_provisioning_profile() {
 fix_package_dependencies() {
     echo "Fixing package dependencies..."
 
-    # Fix swiftui-cached-async-image (main branch has broken Package.swift)
-    if grep -q 'XCRemoteSwiftPackageReference "swiftui-cached-async-image"' "${PROJECT}/project.pbxproj" 2>/dev/null; then
-        sed -i '' '/XCRemoteSwiftPackageReference "swiftui-cached-async-image" \*\/ = {/,/};/{
-            s/branch = main;/kind = upToNextMajorVersion;/
-            s/kind = branch;/minimumVersion = 1.9.0;/
-            s/minimumVersion = [0-9.][0-9.]*;/minimumVersion = 1.9.0;/
-        }' "${PROJECT}/project.pbxproj"
-        echo "  Fixed swiftui-cached-async-image package"
+    local PBXPROJ="${PROJECT}/project.pbxproj"
+    local NEEDS_FIX=false
+
+    if grep -q 'XCRemoteSwiftPackageReference "swiftui-cached-async-image"' "$PBXPROJ" 2>/dev/null; then
+        NEEDS_FIX=true
+    fi
+    if grep -q 'XCRemoteSwiftPackageReference "SwiftCBOR"' "$PBXPROJ" 2>/dev/null; then
+        NEEDS_FIX=true
     fi
 
-    # Fix SwiftCBOR (master branch tracking causes issues)
-    if grep -q 'XCRemoteSwiftPackageReference "SwiftCBOR"' "${PROJECT}/project.pbxproj" 2>/dev/null; then
-        sed -i '' '/XCRemoteSwiftPackageReference "SwiftCBOR" \*\/ = {/,/};/{
-            s/branch = master;/kind = upToNextMajorVersion;/
-            s/kind = branch;/minimumVersion = 0.4.0;/
-            s/minimumVersion = [0-9.][0-9.]*;/minimumVersion = 0.4.0;/
-        }' "${PROJECT}/project.pbxproj"
-        echo "  Fixed SwiftCBOR package"
+    if [ "$NEEDS_FIX" = true ]; then
+        python3 - "$PBXPROJ" << 'PYEOF'
+import re
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    data = fh.read()
+
+# Map of package name -> {pattern: replacement}
+packages = {
+    "swiftui-cached-async-image": {
+        r'\b(branch\s*=\s*main\s*;)': r'kind = upToNextMajorVersion;',
+        r'\b(kind\s*=\s*branch\s*;)': r'minimumVersion = 1.9.0;',
+        r'\b(minimumVersion\s*=\s*[0-9.]+\s*;)': r'minimumVersion = 1.9.0;',
+    },
+    "SwiftCBOR": {
+        r'\b(branch\s*=\s*master\s*;)': r'kind = upToNextMajorVersion;',
+        r'\b(kind\s*=\s*branch\s*;)': r'minimumVersion = 0.4.0;',
+        r'\b(minimumVersion\s*=\s*[0-9.]+\s*;)': r'minimumVersion = 0.4.0;',
+    },
+}
+
+ID_PATTERN = re.compile(r"^\s*([A-F0-9]+)\s*/\*\s*XCRemoteSwiftPackageReference\s*\"([^\"]+)\"\s*\*/\s*=\s*\{$", re.M)
+
+for m in ID_PATTERN.finditer(data):
+    pkg_id = m.group(1)
+    pkg_name = m.group(2)
+    if pkg_name not in packages:
+        continue
+
+    # Find the end of this block (matching braces)
+    block_start = m.end()
+    depth = 1
+    i = block_start
+    while i < len(data) and depth > 0:
+        if data[i] == "{":
+            depth += 1
+        elif data[i] == "}":
+            depth -= 1
+        i += 1
+    block_end = i
+    block = data[block_start:block_end]
+
+    rules = packages[pkg_name]
+    changed = False
+    for pattern_str, replacement in rules.items():
+        new_block, n = re.subn(pattern_str, replacement, block)
+        if n > 0:
+            block = new_block
+            changed = True
+
+    if changed:
+        data = data[:block_start] + block + data[block_end:]
+        print(f"  Fixed {pkg_name} package")
+
+with open(path, "w", encoding="utf-8") as fh:
+    fh.write(data)
+PYEOF
     fi
 
     # Clear SPM cache to avoid stale manifests
