@@ -673,8 +673,10 @@ public enum FileTranslatorFactory {
 
 if old in data:
     data = data.replace(old, new)
-    # Also update remaining Configurator references inside the enum
+    # Update all remaining Configurator references
     data = data.replace('configurator: Configurator', 'configurator: FileTranslatorConfigurator')
+    data = data.replace('FileTranslatorFactory.Configurator', 'FileTranslatorConfigurator')
+    data = data.replace('any FileTranslatorConfigurator', 'any FileTranslatorConfigurator')
     with open(path, 'w') as f:
         f.write(data)
     print("  Moved Configurator protocol out of enum")
