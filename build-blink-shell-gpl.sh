@@ -959,7 +959,8 @@ resolve_packages() {
     xcodebuild -resolvePackageDependencies \
         -project "$PROJECT" \
         -scheme "$SCHEME" \
-        2>&1 | grep -E "(Resolved|Fetching|Checking out|error:|warning:)" || true
+        2>&1 | tee "${BUILD_DIR}/resolve.log" | grep -E "(Resolved|Fetching|Checking out|error:|warning:)" || true
+    echo "Full resolution log: ${BUILD_DIR}/resolve.log"
 }
 
 # Function to run xcodebuild with optional xcpretty and logging
