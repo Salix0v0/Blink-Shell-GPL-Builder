@@ -487,14 +487,11 @@ PYEOF
 
 # Function to fix hardcoded TEAM_ID in project file
 fix_team_id() {
-    local PROJECT_FILE="${PROJECT}/project.pbxproj"
-    local HARDCODED_TEAM="A2H2CL32AG"
-
-    if grep -q "$HARDCODED_TEAM" "$PROJECT_FILE" 2>/dev/null; then
-        echo "Fixing hardcoded TEAM_ID in project..."
-        sed -i '' "s/${HARDCODED_TEAM}/\${TEAM_ID}/g" "$PROJECT_FILE"
-        echo "  Replaced $HARDCODED_TEAM with \${TEAM_ID}"
-    fi
+    # SKIPPED: Replacing the team ID with ${TEAM_ID} causes old-style plist
+    # parser errors because the { } characters are interpreted as dictionary
+    # delimiters. For unsigned IPA builds, the team ID is irrelevant since
+    # CODE_SIGN_IDENTITY="-" and CODE_SIGNING_REQUIRED=NO.
+    echo "Skipping team ID fix (not needed for unsigned builds)"
 }
 
 # Function to remove paywall (GPL sideload build)
