@@ -640,10 +640,11 @@ PY
 
 # Patch BlinkFileProvider Swift compilation errors (Swift 5.9+ strictness)
 patch_blinkfileprovider_swift_errors() {
-    echo "Patching: Fixing BlinkFileProvider Swift 5.9 compilation errors..."
+    echo "Patching: Fixing BlinkFileProvider Swift compilation errors..."
 
-    # Fix 1: nested protocol 'Configurator' inside enum (Swift 5.9 error)
     local TRANSLATOR_FILE="${SOURCE_DIR}/BlinkFileProvider/FilesTranslatorConnection.swift"
+    local FP_HELPERS="${SOURCE_DIR}/BlinkFileProvider/FileProviderReplicatedExtension+Helpers.swift"
+
     if [ -f "$TRANSLATOR_FILE" ] && grep -q 'public protocol Configurator' "$TRANSLATOR_FILE" 2>/dev/null; then
         python3 - "$TRANSLATOR_FILE" << 'PYEOF'
 import re, sys
@@ -673,10 +674,8 @@ public enum FileTranslatorFactory {
 
 if old in data:
     data = data.replace(old, new)
-    # Update all remaining Configurator references
     data = data.replace('configurator: Configurator', 'configurator: FileTranslatorConfigurator')
     data = data.replace('FileTranslatorFactory.Configurator', 'FileTranslatorConfigurator')
-    data = data.replace('any FileTranslatorConfigurator', 'any FileTranslatorConfigurator')
     with open(path, 'w') as f:
         f.write(data)
     print("  Moved Configurator protocol out of enum")
@@ -685,26 +684,26 @@ else:
 PYEOF
     fi
 
-    # Fix 2: generic parameter 'P' could not be inferred (Swift 5.9 type inference)
-    local FP_HELPERS="${SOURCE_DIR}/BlinkFileProvider/FileProviderReplicatedExtension+Helpers.swift"
     if [ -f "$FP_HELPERS" ] && grep -q 'flatMap(maxPublishers: .max(3))' "$FP_HELPERS" 2>/dev/null; then
         python3 - "$FP_HELPERS" << 'PYEOF'
-import re, sys
+import re
 path = sys.argv[1]
 with open(path) as f:
     data = f.read()
 
-# Add .eraseToAnyPublisher() to help Swift 5.9 type inference on the Combine pipeline
-old = '              .map { _ in fileName }\n          }'
-new = '              .map { _ in fileName }\n              .eraseToAnyPublisher()\n          }'
+# The Combine pipeline has complex nested types that Swift 5.9 can't infer.
+# Wrap the flatMap closure body in a helper call to break the type inference chain.
+# We replace the entire .flatMap(maxPublishers:) call with a simplified version.
+pattern = r'(\.flatMap\(maxPublishers: \.max\(3\)\) \{ fileAttributes in\s+let fileName = fileAttributes\[\.name\] as! String\s+return translator\.cloneWalkTo\(fileName\)\s+\.flatMap \{ \$0\.remove\(\) \}\s+// Ignore errors\.\s+\.catch \{ _ in Just\(false\) \}\s+\.map \{ _ in fileName \}\s+\})'
+replacement = '.flatMap(maxPublishers: .max(3)) { fileAttributes -> AnyPublisher<String, Never> in\n            let fileName = fileAttributes[.name] as! String\n            return translator.cloneWalkTo(fileName)\n              .flatMap { $0.remove() }\n              .catch { _ in Just(false) }\n              .setFailureType(to: Never.self)\n              .map { _ in fileName }\n              .eraseToAnyPublisher()\n          }'
 
-if old in data and '.eraseToAnyPublisher()' not in data:
-    data = data.replace(old, new)
+new_data, count = re.subn(pattern, replacement, data, flags=re.DOTALL)
+if count > 0:
     with open(path, 'w') as f:
-        f.write(data)
-    print("  Added eraseToAnyPublisher for Combine type inference")
+        f.write(new_data)
+    print("  Fixed Combine type inference with eraseToAnyPublisher")
 else:
-    print("  eraseToAnyPublisher already present or pattern not found")
+    print("  Combine fix pattern not found (may already be fixed)")
 PYEOF
     fi
 }
