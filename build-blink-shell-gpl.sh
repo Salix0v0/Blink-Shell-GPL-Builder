@@ -1032,6 +1032,7 @@ setup_repository() {
 
     fix_package_dependencies
     fix_team_id
+    patch_blinkfileprovider_swift_errors
     patch_remove_paywall
     patch_skip_migrator
     patch_fileprovider_sideload
