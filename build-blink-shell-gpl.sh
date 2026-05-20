@@ -638,6 +638,75 @@ PY
     fi
 }
 
+# Patch BlinkFileProvider Swift compilation errors (Swift 5.9+ strictness)
+patch_blinkfileprovider_swift_errors() {
+    echo "Patching: Fixing BlinkFileProvider Swift 5.9 compilation errors..."
+
+    # Fix 1: nested protocol 'Configurator' inside enum (Swift 5.9 error)
+    local TRANSLATOR_FILE="${SOURCE_DIR}/BlinkFileProvider/FilesTranslatorConnection.swift"
+    if [ -f "$TRANSLATOR_FILE" ] && grep -q 'public protocol Configurator' "$TRANSLATOR_FILE" 2>/dev/null; then
+        python3 - "$TRANSLATOR_FILE" << 'PYEOF'
+import re, sys
+path = sys.argv[1]
+with open(path) as f:
+    data = f.read()
+
+# Move Configurator protocol out of FileTranslatorFactory enum
+old = '''public enum FileTranslatorFactory {
+  // The configurator gives us more flexibility on locations for configurations. So BlinkTests or others do not depend on
+  // Blink locations.
+  public protocol Configurator {
+    func sshConfig(host title: String) throws -> (String, SSHClientConfig)
+  }
+
+  static func rootTranslator(for path: BlinkFileProviderPath, configurator: Configurator)'''
+
+new = '''public protocol FileTranslatorConfigurator {
+  func sshConfig(host title: String) throws -> (String, SSHClientConfig)
+}
+
+public enum FileTranslatorFactory {
+  // The configurator gives us more flexibility on locations for configurations. So BlinkTests or others do not depend on
+  // Blink locations.
+
+  static func rootTranslator(for path: BlinkFileProviderPath, configurator: FileTranslatorConfigurator)'''
+
+if old in data:
+    data = data.replace(old, new)
+    # Also update remaining Configurator references inside the enum
+    data = data.replace('configurator: Configurator', 'configurator: FileTranslatorConfigurator')
+    with open(path, 'w') as f:
+        f.write(data)
+    print("  Moved Configurator protocol out of enum")
+else:
+    print("  Configurator protocol already fixed or pattern not found")
+PYEOF
+    fi
+
+    # Fix 2: generic parameter 'P' could not be inferred (Swift 5.9 type inference)
+    local FP_HELPERS="${SOURCE_DIR}/BlinkFileProvider/FileProviderReplicatedExtension+Helpers.swift"
+    if [ -f "$FP_HELPERS" ] && grep -q 'flatMap(maxPublishers: .max(3))' "$FP_HELPERS" 2>/dev/null; then
+        python3 - "$FP_HELPERS" << 'PYEOF'
+import re, sys
+path = sys.argv[1]
+with open(path) as f:
+    data = f.read()
+
+# Add explicit type to help Swift 5.9 type inference on the Combine pipeline
+old = '.flatMap(maxPublishers: .max(3)) { fileAttributes in'
+new = '.flatMap(maxPublishers: .max(3)) { fileAttributes -> AnyPublisher<String, Never> in'
+
+if old in data and new not in data:
+    data = data.replace(old, new)
+    with open(path, 'w') as f:
+        f.write(data)
+    print("  Added explicit type annotation for flatMap")
+else:
+    print("  flatMap type annotation already fixed or pattern not found")
+PYEOF
+    fi
+}
+
 # Patch to skip Migrator (uses FileProvider APIs that don't work with sideloading)
 patch_skip_migrator() {
     echo "Patching: Skipping Migrator for sideload build..."
@@ -917,6 +986,7 @@ setup_repository() {
 
             fix_package_dependencies
             fix_team_id
+            patch_blinkfileprovider_swift_errors
             patch_remove_paywall
             patch_skip_migrator
             patch_fileprovider_sideload
@@ -931,6 +1001,7 @@ setup_repository() {
             # Still apply patches in case they haven't been applied
             fix_package_dependencies
             fix_team_id
+            patch_blinkfileprovider_swift_errors
             patch_remove_paywall
             patch_skip_migrator
             patch_fileprovider_sideload
@@ -984,10 +1055,24 @@ run_xcodebuild() {
     mkdir -p "$(dirname "$BUILD_LOG")"
     echo "Build log: $BUILD_LOG"
 
+    local xcresult=0
     if command -v xcpretty &> /dev/null; then
+        set -o pipefail
         "$@" 2>&1 | tee "$BUILD_LOG" | xcpretty
+        xcresult=$?
+        set +o pipefail
     else
+        set -o pipefail
         "$@" 2>&1 | tee "$BUILD_LOG"
+        xcresult=$?
+        set +o pipefail
+    fi
+
+    if [ "$xcresult" -ne 0 ]; then
+        echo ""
+        echo "ERROR: xcodebuild failed with exit code $xcresult"
+        echo "See build log: $BUILD_LOG"
+        exit 1
     fi
 }
 
