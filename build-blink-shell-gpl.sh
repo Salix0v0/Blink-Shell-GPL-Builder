@@ -696,7 +696,7 @@ with open(path) as f:
 
 # Add explicit type to help Swift 5.9 type inference on the Combine pipeline
 old = '.flatMap(maxPublishers: .max(3)) { fileAttributes in'
-new = '.flatMap(maxPublishers: .max(3)) { fileAttributes -> AnyPublisher<String, Never> in'
+new = '.flatMap(maxPublishers: .max(3)) { fileAttributes -> AnyPublisher<String, any Error> in'
 
 if old in data and new not in data:
     data = data.replace(old, new)
