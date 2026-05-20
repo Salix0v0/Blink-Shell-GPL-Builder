@@ -1207,15 +1207,18 @@ EXPORT_EOF
     else
         # Generic iOS build (unsigned .ipa for sideloading)
         # Use sideload-friendly entitlements (no iCloud, Push, etc.)
+        # Build only the main Blink target (not extensions which have
+        # compilation errors with newer Swift and are removed from IPA anyway)
         run_xcodebuild xcodebuild \
             -project "$PROJECT" \
-            -scheme "$SCHEME" \
+            -target "Blink" \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -derivedDataPath "${BUILD_DIR}/DerivedData" \
             CONFIGURATION_BUILD_DIR="${BUILD_DIR}/Products" \
             -skipPackagePluginValidation \
             -skipMacroValidation \
+            IPHONEOS_DEPLOYMENT_TARGET=16.0 \
             CODE_SIGN_IDENTITY="-" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
