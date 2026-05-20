@@ -1,0 +1,144 @@
+name: Build Blink Shell (Unsigned IPA)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Blink version tag (e.g., v18.4.2)'
+        required: true
+        default: 'v18.4.2'
+        type: string
+      clean:
+        description: 'Clean build (overwrite source, clear derived data)'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  build:
+    name: Build unsigned IPA
+    runs-on: macos-14
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout builder repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode version
+        run: |
+          echo "=== Available Xcode versions ==="
+          ls -d /Applications/Xcode*.app 2>/dev/null | sort || true
+          echo ""
+
+          if [ -d "/Applications/Xcode_15.4.app" ]; then
+            TARGET="/Applications/Xcode_15.4.app/Contents/Developer"
+          elif [ -d "/Applications/Xcode_16.app" ]; then
+            TARGET="/Applications/Xcode_16.app/Contents/Developer"
+          elif [ -d "/Applications/Xcode_15.2.app" ]; then
+            TARGET="/Applications/Xcode_15.2.app/Contents/Developer"
+          else
+            echo "::warning::No preferred Xcode found, using system default."
+            TARGET=$(xcode-select -p)
+          fi
+
+          sudo xcode-select -s "$TARGET"
+          echo "Selected: $(xcode-select -p)"
+          xcodebuild -version
+          echo ""
+
+          echo "=== Checking iOS SDK ==="
+          xcrun --sdk iphoneos --show-sdk-path || {
+            echo "::error::iOS SDK not found. The runner may lack the iOS platform."
+            echo "Available SDKs:"
+            xcodebuild -showsdks 2>/dev/null || true
+            exit 1
+          }
+          echo "iOS SDK: $(xcrun --sdk iphoneos --show-sdk-path)"
+
+      - name: Install build dependencies
+        run: |
+          brew install jq
+          echo "jq: $(jq --version)"
+          echo "git: $(git --version)"
+          echo "python3: $(python3 --version)"
+
+      - name: Restore SPM cache
+        id: spm-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/Developer/Xcode/DerivedData/**/SourcePackages
+          key: spm-${{ inputs.version }}-${{ runner.os }}-${{ hashFiles('build-blink-shell-gpl.sh') }}
+          restore-keys: |
+            spm-${{ inputs.version }}-${{ runner.os }}-
+
+      - name: Restore sideload tool cache
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: sideload-tools-v3-${{ hashFiles('build-blink-shell-gpl.sh') }}
+
+      - name: Clear stale SPM state (clean mode)
+        if: ${{ inputs.clean }}
+        run: |
+          rm -rf ~/Library/Caches/org.swift.swiftpm/manifests 2>/dev/null || true
+          rm -rf ~/Library/Developer/Xcode/DerivedData 2>/dev/null || true
+
+      - name: Report initial disk space
+        run: |
+          echo "=== Disk usage before build ==="
+          df -h / || true
+
+      - name: Build Blink Shell unsigned IPA
+        id: build
+        run: |
+          chmod +x build-blink-shell-gpl.sh
+
+          BUILD_ARGS=(
+            --version "${{ inputs.version }}"
+            --keep-build
+          )
+
+          if [[ "${{ inputs.clean }}" == "true" ]]; then
+            BUILD_ARGS+=(--overwrite --clean)
+          fi
+
+          echo "Running: ./build-blink-shell-gpl.sh ${BUILD_ARGS[*]}"
+          ./build-blink-shell-gpl.sh "${BUILD_ARGS[@]}"
+        env:
+          NSUnbufferedIO: YES
+
+      - name: Verify IPA artifact
+        run: |
+          IPA_FILE="dist/Blink-unsigned-${{ inputs.version }}.ipa"
+          if [ ! -f "$IPA_FILE" ]; then
+            echo "::error::IPA file not found at expected path: $IPA_FILE"
+            echo "Contents of dist/:"
+            ls -la dist/ 2>/dev/null || echo "(dist/ does not exist)"
+            exit 1
+          fi
+          echo "IPA size: $(du -h "$IPA_FILE" | cut -f1)"
+
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Blink-unsigned-${{ inputs.version }}
+          path: dist/Blink-unsigned-${{ inputs.version }}.ipa
+          retention-days: 90
+          compression-level: 0
+
+      - name: Upload build log
+        if: always() && steps.build.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ inputs.version }}
+          path: build-output/build.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Report final disk space
+        if: always()
+        run: |
+          echo "=== Disk usage after build ==="
+          df -h / || true
