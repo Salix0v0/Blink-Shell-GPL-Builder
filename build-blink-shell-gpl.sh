@@ -411,7 +411,7 @@ fix_package_dependencies() {
 
     # Fix swiftui-cached-async-image (main branch has broken Package.swift)
     if grep -q 'XCRemoteSwiftPackageReference "swiftui-cached-async-image"' "${PROJECT}/project.pbxproj" 2>/dev/null; then
-        sed -i '' '/XCRemoteSwiftPackageReference "swiftui-cached-async-image"/,/};/{
+        sed -i '' '/XCRemoteSwiftPackageReference "swiftui-cached-async-image" \*\/ = {/,/};/{
             s/branch = main;/kind = upToNextMajorVersion;/
             s/kind = branch;/minimumVersion = 1.9.0;/
             s/minimumVersion = [0-9.][0-9.]*;/minimumVersion = 1.9.0;/
@@ -421,7 +421,7 @@ fix_package_dependencies() {
 
     # Fix SwiftCBOR (master branch tracking causes issues)
     if grep -q 'XCRemoteSwiftPackageReference "SwiftCBOR"' "${PROJECT}/project.pbxproj" 2>/dev/null; then
-        sed -i '' '/XCRemoteSwiftPackageReference "SwiftCBOR"/,/};/{
+        sed -i '' '/XCRemoteSwiftPackageReference "SwiftCBOR" \*\/ = {/,/};/{
             s/branch = master;/kind = upToNextMajorVersion;/
             s/kind = branch;/minimumVersion = 0.4.0;/
             s/minimumVersion = [0-9.][0-9.]*;/minimumVersion = 0.4.0;/
