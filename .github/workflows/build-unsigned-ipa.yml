@@ -150,7 +150,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-log-${{ inputs.version }}
-          path: build-output/build.log
+          path: |
+            build-output/build.log
+            build-output/resolve.log
           retention-days: 7
           if-no-files-found: ignore
 

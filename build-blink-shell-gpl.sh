@@ -956,10 +956,11 @@ setup_repository() {
 resolve_packages() {
     echo ""
     echo "Resolving package dependencies..."
+    mkdir -p "$BUILD_DIR"
     xcodebuild -resolvePackageDependencies \
         -project "$PROJECT" \
         -scheme "$SCHEME" \
-        2>&1 | tee "${BUILD_DIR}/resolve.log" | grep -E "(Resolved|Fetching|Checking out|error:|warning:)" || true
+        2>&1 | tee "${BUILD_DIR}/resolve.log"
     echo "Full resolution log: ${BUILD_DIR}/resolve.log"
 }
 
