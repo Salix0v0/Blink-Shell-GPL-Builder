@@ -684,26 +684,33 @@ else:
 PYEOF
     fi
 
-    if [ -f "$FP_HELPERS" ] && grep -q 'flatMap(maxPublishers: .max(3))' "$FP_HELPERS" 2>/dev/null; then
-        python3 - "$FP_HELPERS" << 'PYEOF'
-import re
+    # The BlinkFileProvider framework has Combine type inference issues with
+    # Swift 5.9+ that are difficult to patch reliably. Since FileProvider
+    # extensions are removed from the IPA anyway (sideloaded apps can't use
+    # them), we remove BlinkFileProvider from the main target's dependencies.
+    local PBXPROJ="${PROJECT}/project.pbxproj"
+    if grep -q 'BlinkFileProvider.framework' "$PBXPROJ" 2>/dev/null; then
+        python3 - "$PBXPROJ" << 'PYEOF'
+import re, sys
 path = sys.argv[1]
 with open(path) as f:
     data = f.read()
 
-# The Combine pipeline has complex nested types that Swift 5.9 can't infer.
-# Wrap the flatMap closure body in a helper call to break the type inference chain.
-# We replace the entire .flatMap(maxPublishers:) call with a simplified version.
-pattern = r'(\.flatMap\(maxPublishers: \.max\(3\)\) \{ fileAttributes in\s+let fileName = fileAttributes\[\.name\] as! String\s+return translator\.cloneWalkTo\(fileName\)\s+\.flatMap \{ \$0\.remove\(\) \}\s+// Ignore errors\.\s+\.catch \{ _ in Just\(false\) \}\s+\.map \{ _ in fileName \}\s+\})'
-replacement = '.flatMap(maxPublishers: .max(3)) { fileAttributes -> AnyPublisher<String, Never> in\n            let fileName = fileAttributes[.name] as! String\n            return translator.cloneWalkTo(fileName)\n              .flatMap { $0.remove() }\n              .catch { _ in Just(false) }\n              .setFailureType(to: Never.self)\n              .map { _ in fileName }\n              .eraseToAnyPublisher()\n          }'
-
-new_data, count = re.subn(pattern, replacement, data, flags=re.DOTALL)
-if count > 0:
-    with open(path, 'w') as f:
-        f.write(new_data)
-    print("  Fixed Combine type inference with eraseToAnyPublisher")
-else:
-    print("  Combine fix pattern not found (may already be fixed)")
+# Remove PBXBuildFile entries for BlinkFileProvider in Frameworks/Embed Frameworks
+data = re.sub(
+    r'\t\t[A-F0-9]+ /\* BlinkFileProvider\.framework in (?:Embed )?Frameworks \*/,?\n',
+    '', data
+)
+# Remove PBXTargetDependency and PBXContainerItemProxy for BlinkFileProvider
+data = re.sub(
+    r'\t\t[A-F0-9]+ /\* PBXTargetDependency \*/,\n', '', data, count=1
+)
+data = re.sub(
+    r'\t\t[A-F0-9]+ /\* PBXContainerItemProxy \*/,\n', '', data, count=1
+)
+with open(path, 'w') as f:
+    f.write(data)
+print("  Removed BlinkFileProvider from build dependencies")
 PYEOF
     fi
 }
