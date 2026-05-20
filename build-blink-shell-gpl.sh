@@ -694,17 +694,17 @@ path = sys.argv[1]
 with open(path) as f:
     data = f.read()
 
-# Add explicit type to help Swift 5.9 type inference on the Combine pipeline
-old = '.flatMap(maxPublishers: .max(3)) { fileAttributes in'
-new = '.flatMap(maxPublishers: .max(3)) { fileAttributes -> AnyPublisher<String, any Error> in'
+# Add .eraseToAnyPublisher() to help Swift 5.9 type inference on the Combine pipeline
+old = '              .map { _ in fileName }\n          }'
+new = '              .map { _ in fileName }\n              .eraseToAnyPublisher()\n          }'
 
-if old in data and new not in data:
+if old in data and '.eraseToAnyPublisher()' not in data:
     data = data.replace(old, new)
     with open(path, 'w') as f:
         f.write(data)
-    print("  Added explicit type annotation for flatMap")
+    print("  Added eraseToAnyPublisher for Combine type inference")
 else:
-    print("  flatMap type annotation already fixed or pattern not found")
+    print("  eraseToAnyPublisher already present or pattern not found")
 PYEOF
     fi
 }
